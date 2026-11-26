@@ -20,6 +20,11 @@ export const metadata: Metadata = {
   title: 'MediaConvert - All-in-One Media Converter',
   description: 'Convert videos, images, audio, and documents effortlessly. Fast, secure, and simple.',
   keywords: ['media converter', 'video converter', 'image converter', 'audio converter', 'pdf tools', 'ocr'],
+  icons: {
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export default function RootLayout({

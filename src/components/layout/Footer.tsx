@@ -102,12 +102,27 @@ export default function Footer() {
           </div>
         </div>
 
+        {/* Centered Legal Advisory & License */}
+        <div className="py-6 border-t border-white/10">
+          <div className="max-w-3xl mx-auto px-5 py-4 rounded-2xl bg-white/[0.04] border border-white/15 text-center space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#e0231c]">
+              Legal Advisory &amp; License
+            </p>
+            <p className="text-xs sm:text-sm text-gray-200 leading-relaxed">
+              MediaConvert is provided strictly for personal, educational, and authorized media conversion. Users are solely responsible for ensuring they hold the rights or permission to process or download any files or URLs and must comply with all applicable copyright laws and platform terms of service.
+            </p>
+            <p className="text-xs font-medium text-white pt-1">
+              MIT License · © {new Date().getFullYear()} MediaConvert · All Rights Reserved
+            </p>
+          </div>
+        </div>
+
         {/* Bottom Bar */}
-        <div className="py-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="text-sm text-gray-500">
+        <div className="py-5 border-t border-white/10 flex flex-col items-center justify-center text-center gap-2">
+          <p className="text-sm text-gray-300">
             © {new Date().getFullYear()} MediaConvert. All rights reserved.
           </p>
-          <p className="text-sm text-gray-500 flex items-center gap-1">
+          <p className="text-xs text-gray-400 flex items-center justify-center gap-1">
             Made with <Heart className="w-3.5 h-3.5 text-pink-primary fill-pink-primary" /> for the web
           </p>
         </div>
