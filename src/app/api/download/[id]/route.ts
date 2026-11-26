@@ -4,6 +4,9 @@ import path from 'path';
 import { getFileFromTmp } from '@/lib/file-storage';
 import { getMimeType, getFileExtension } from '@/lib/utils';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -29,13 +32,15 @@ export async function GET(
     // Optional custom filename from query string
     const searchParams = request.nextUrl.searchParams;
     const downloadName = searchParams.get('name') || fileName;
+    const asciiFallback = downloadName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+    const utf8Encoded = encodeURIComponent(downloadName);
 
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
         'Content-Type': mimeType,
         'Content-Length': stat.size.toString(),
-        'Content-Disposition': `attachment; filename="${downloadName}"`,
+        'Content-Disposition': `attachment; filename="${asciiFallback}"; filename*=UTF-8''${utf8Encoded}`,
         'Cache-Control': 'no-store, no-cache, must-revalidate',
       },
     });

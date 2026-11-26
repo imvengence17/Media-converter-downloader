@@ -6,6 +6,10 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { buildDownloadUrl, createTempFile, saveTempFile, deleteTempFile } from '@/lib/file-storage';
 import { getFileExtension } from '@/lib/utils';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   let worker: any = null;
   let tempImagePath = '';

@@ -5,6 +5,10 @@ import sharp from 'sharp';
 import { buildDownloadUrl, createTempFile } from '@/lib/file-storage';
 import { getFileExtension } from '@/lib/utils';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();

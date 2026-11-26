@@ -6,6 +6,10 @@ import archiver from 'archiver';
 import { buildDownloadUrl, createTempFile, getFileFromTmp } from '@/lib/file-storage';
 import { fetchImageFromUrl, formatYtDlpError } from '@/lib/ytdlp';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
