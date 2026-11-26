@@ -15,7 +15,8 @@ export default function KageBackground() {
         className="w-full h-full border-0 pointer-events-none"
         style={{
           width: '100vw',
-          height: '100vh',
+          height: '100dvh',
+          minHeight: '100vh',
           position: 'fixed',
           inset: 0,
           border: 'none',

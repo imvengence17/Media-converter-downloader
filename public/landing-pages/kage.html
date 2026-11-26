@@ -1198,8 +1198,25 @@ html.bg-only #grain {
   position: fixed !important;
   inset: 0 !important;
   width: 100vw !important;
-  height: 100vh !important;
+  height: 100dvh !important;
+  min-height: 100vh !important;
   pointer-events: none !important;
+}
+@media (max-width: 900px), (hover: none), (pointer: coarse) {
+  .nav::before {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(5, 7, 10, 0.90) !important;
+  }
+  .converter-dashboard-card {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(12, 12, 15, 0.96) !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.75) !important;
+  }
+  #grain {
+    display: none !important;
+  }
 }
 html.skip-pre #pre {
   display: none !important;
@@ -1619,7 +1636,9 @@ const Q      = new URLSearchParams(location.search);
 const qs     = (k, d) => { const v = Q.get(k); return v === null ? d : v; };
 const qn     = (k, d) => { const v = Q.get(k); return v === null ? d : parseFloat(v); };
 const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const COARSE = matchMedia('(hover: none)').matches;
+const COARSE = matchMedia('(hover: none)').matches || matchMedia('(pointer: coarse)').matches;
+const IS_MOBILE = COARSE || (document.documentElement.clientWidth || innerWidth) <= 900;
+const IS_BG = Q.get('bg') === '1' || location.search.indexOf('bg=1') !== -1;
 
 const clamp  = (v, a, b) => v < a ? a : (v > b ? b : v);
 const sat    = v => clamp(v, 0, 1);
@@ -2666,11 +2685,11 @@ const canvas = document.getElementById('gl');
 const vpW = () => document.documentElement.clientWidth  || innerWidth;
 const vpH = () => document.documentElement.clientHeight || innerHeight;
 let renderer, scene, camera, maxAniso = 1;
-const HI = qs('q', COARSE ? 'low' : 'high');
+const HI = qs('q', IS_MOBILE ? 'low' : 'high');
 const LOW = HI === 'low';
-const WANT_POST    = qs('post', '1') !== '0';
+const WANT_POST    = qs('post', LOW ? '0' : '1') !== '0';
 const WANT_SHADOW  = qs('shadow', LOW ? '0' : '1') !== '0';
-const DPR_CAP      = qn('dpr', LOW ? 1.4 : 1.8);
+const DPR_CAP      = qn('dpr', LOW ? 1.0 : 1.75);
 /* the renderer trades resolution for frame rate on its own — the scene is
    fill-bound (five big alpha-blended veils plus a bloom chain), so pixels
    are the only knob worth turning on unknown hardware */
@@ -2687,7 +2706,7 @@ function initGL() {
   renderer.setSize(vpW(), vpH(), true);
   renderer.outputEncoding = WANT_POST ? THREE.LinearEncoding : THREE.sRGBEncoding;
   renderer.toneMapping = WANT_POST ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.0;
+  renderer.toneMappingExposure = WANT_POST ? 1.0 : 1.12;
   renderer.setClearColor(0x05070a, 1);
   if (WANT_SHADOW) { renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; }
   maxAniso = renderer.capabilities.getMaxAnisotropy();
@@ -2709,7 +2728,7 @@ function tx(canvasEl, o) {
   const t = new THREE.CanvasTexture(canvasEl);
   t.wrapS = t.wrapT = o.wrap || THREE.ClampToEdgeWrapping;
   if (o.repeat) t.repeat.set(o.repeat[0], o.repeat[1]);
-  t.anisotropy = Math.min(o.aniso || 8, maxAniso);
+  t.anisotropy = LOW ? 1 : Math.min(o.aniso || 8, maxAniso);
   if (o.srgb !== false) t.encoding = THREE.sRGBEncoding;
   t.needsUpdate = true;
   return t;
@@ -3391,18 +3410,21 @@ function cutoutMaterial(canvasEl, sway) {
 function buildForeground() {
   /* the plane widths are sized against the frustum at their own depth: a
      26-unit sheet two metres from the lens only shows its middle tenth */
+  const bScale = LOW ? 0.35 : 1;
+  const gW = LOW ? 1024 : 2048, gH = LOW ? 512 : 1024;
+  const rW = LOW ? 768 : 1536, rH = LOW ? 512 : 1024;
   const layers = [
     /* name        canvas                                                                     x     y     z     w     h   sway */
-    ['grassFar',  texGrassCutout(101, { crest: .30, peak: .46, wide: .42, blades: 11000, len: 34, warm: .70, crest2: .46, crest3: .40 }),
+    ['grassFar',  texGrassCutout(101, { w: gW, h: gH, crest: .30, peak: .46, wide: .42, blades: Math.round(11000 * bScale), len: 34, warm: .70, crest2: .46, crest3: .40 }),
                   -3.4,  2.85, -0.4, 24, 12, .040],
-    ['rockLeft',  texRockCutout(404, { blobs: [[.24, .78, .48, .38], [.58, .94, .46, .30], [.84, 1.06, .42, .28]] }),
+    ['rockLeft',  texRockCutout(404, { w: rW, h: rH, blobs: [[.24, .78, .48, .38], [.58, .94, .46, .30], [.84, 1.06, .42, .28]] }),
                   -7.2,  2.55,  1.8, 17, 11.3, .010],
-    ['grassMid',  texGrassCutout(202, { crest: .60, peak: .55, wide: .40, blades: 13000, len: 40, warm: .95, crest2: -.44, crest3: .34 }),
+    ['grassMid',  texGrassCutout(202, { w: gW, h: gH, crest: .60, peak: .55, wide: .40, blades: Math.round(13000 * bScale), len: 40, warm: .95, crest2: -.44, crest3: .34 }),
                    3.9,  2.86,  3.6, 15,  7.5, .062],
-    ['grassNear', texGrassCutout(303, { crest: .42, peak: .62, wide: .48, blades: 16000, len: 50, warm: .85, crest2: .42, crest3: .44 }),
+    ['grassNear', texGrassCutout(303, { w: gW, h: gH, crest: .42, peak: .62, wide: .48, blades: Math.round(16000 * bScale), len: 50, warm: .85, crest2: .42, crest3: .44 }),
                   -1.9,  2.92,  5.6, 12,  6, .092],
     ['bough',     texBranchCutout(505), 4.6, 2.95, 6.4, 13, 8.7, .045],
-    ['rockNear',  texRockCutout(606, { blobs: [[.18, .86, .54, .44], [.54, 1.02, .50, .36], [.86, .92, .40, .32]] }),
+    ['rockNear',  texRockCutout(606, { w: rW, h: rH, blobs: [[.18, .86, .54, .44], [.54, 1.02, .50, .36], [.86, .92, .40, .32]] }),
                   -6.6,  1.70,  6.0, 9, 6, .008]
   ];
   WORLD.fg = [];
@@ -4676,7 +4698,7 @@ function wireHeroExit() {
       const a = 1 - smooth(o.at, o.at + o.span, t);
       o.el.style.opacity = a.toFixed(3);
       if (o.shift) o.el.style.transform = 'translate3d(0,' + ((1 - a) * 15).toFixed(1) + 'px,0)';
-      if (o.blur) o.el.style.filter = a > .999 ? '' : 'blur(' + ((1 - a) * o.blur).toFixed(1) + 'px)';
+      if (o.blur && !IS_MOBILE) o.el.style.filter = a > .999 ? '' : 'blur(' + ((1 - a) * o.blur).toFixed(1) + 'px)';
       o.el.style.pointerEvents = a < .05 ? 'none' : '';
     });
   };
@@ -5025,18 +5047,25 @@ function render() {
   renderer.setRenderTarget(WANT_POST ? POST.scene : null);
   renderer.clear(true, true, false);
   renderer.render(scene, camera);
-  renderCards(WANT_POST ? POST.scene : null);
+  if (!IS_BG) renderCards(WANT_POST ? POST.scene : null);
   renderer.setRenderTarget(null);
   if (WANT_POST) {
-    POST.comp.uniforms.uT.value = clock;
+    POST.comp.uniforms.uT.value = clock % 60;
     POST.comp.uniforms.uFade.value = fadeIn;
     renderPost();
   }
 }
 
+const MIN_FRAME_MS = LOW ? 31 : 0;
+let rafId = 0;
 function frame(now) {
+  rafId = 0;
   if (!running) return;
-  const raw = (now - tPrev) / 1000 || 0;
+  const raw = Math.max(0, (now - tPrev) / 1000) || 0;
+  if (MIN_FRAME_MS && raw * 1000 < MIN_FRAME_MS) {
+    queue();
+    return;
+  }
   const dt = Math.min(raw, .05);              /* animation never jumps … */
   tPrev = now; clock += dt;
   fadeIn = INTRO.t0 ? sat((now - INTRO.t0) / 700) : 1;
@@ -5065,7 +5094,14 @@ function frame(now) {
   queue();
 }
 const TIMER = qs('driver', 'raf') === 'timer';
-function queue() { TIMER ? setTimeout(() => frame(performance.now()), 16) : requestAnimationFrame(frame); }
+function queue() {
+  if (rafId) {
+    TIMER ? clearTimeout(rafId) : cancelAnimationFrame(rafId);
+    rafId = 0;
+  }
+  if (!running) return;
+  rafId = TIMER ? setTimeout(() => frame(performance.now()), 16) : requestAnimationFrame(frame);
+}
 
 /* ======================================================== 14 · booting */
 const JOBS = [
@@ -5101,7 +5137,7 @@ const JOBS = [
   ['Cutting the word', () => buildWordmark()],
   ['Raising the mist', () => { buildAtmosphere(); buildLeafFall(); buildWisps(); }],
   ['Polishing the water', () => {
-    initPost(); buildCards(); buildCardCloth();
+    initPost(); if (!IS_BG) { buildCards(); buildCardCloth(); }
     WORLD.fg.forEach(m => m.layers.set(1));
     WORD.glyphs.forEach(m => m.layers.set(2));
     if (WORLD.rain) WORLD.rain.layers.set(1);
@@ -5116,8 +5152,10 @@ const JOBS = [
 ];
 
 function boot() {
-  makeGrain();
-  wireReveals(); wireForegroundStages(); wireNav(); wireHeroExit(); wireFocus(); wireCursor();
+  if (!IS_MOBILE) makeGrain();
+  if (!IS_BG) {
+    wireReveals(); wireForegroundStages(); wireNav(); wireHeroExit(); wireFocus(); wireCursor();
+  }
   document.body.classList.add('is-locked');
   let i = 0;
   const step = () => {
@@ -5159,16 +5197,32 @@ function fallback(err) {
 
 function start() {
   try { sessionStorage.setItem('kage_pre_done', '1'); } catch (e) {}
-  addEventListener('resize', () => { resize(); }, { passive: true });
-  addEventListener('orientationchange', () => setTimeout(resize, 250));
+  let resizeTimer = 0, lastW = vpW(), lastH = vpH();
+  addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const w = vpW(), h = vpH();
+      if (IS_MOBILE && w === lastW && Math.abs(h - lastH) < 95) {
+        document.documentElement.style.setProperty('--vw', w + 'px');
+        return;
+      }
+      lastW = w; lastH = h;
+      resize();
+    }, 100);
+  }, { passive: true });
+  addEventListener('orientationchange', () => setTimeout(() => { lastW = vpW(); lastH = vpH(); resize(); }, 250));
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { running = false; }
-    else if (!running) { running = true; tPrev = performance.now(); queue(); }
+    if (document.hidden) {
+      running = false;
+      if (rafId) { TIMER ? clearTimeout(rafId) : cancelAnimationFrame(rafId); rafId = 0; }
+    } else if (!running) {
+      running = true; tPrev = performance.now(); queue();
+    }
   });
   resize();
 
   const shot = Q.get('shot');
-  const isBg = Q.get('bg') === '1' || location.search.indexOf('bg=1') !== -1;
+  const isBg = IS_BG;
   if (isBg) {
     RIG.intro = 1; fadeIn = 1; INTRO.t0 = 0;
     scrollTo(0, 0);
