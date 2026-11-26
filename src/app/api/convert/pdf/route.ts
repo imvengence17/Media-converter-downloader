@@ -61,16 +61,48 @@ export async function POST(request: NextRequest) {
 
       case 'merge': {
         if (files.length < 2) {
-          return NextResponse.json({ error: 'Please upload at least two PDF files to merge' }, { status: 400 });
+          return NextResponse.json({ error: 'Please upload at least two files (PDFs or images) to merge' }, { status: 400 });
         }
 
         const mergedPdf = await PDFDocument.create();
+        const imageExts = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif', 'tiff', 'tif', 'bmp']);
 
         for (const file of files) {
           const bytes = await file.arrayBuffer();
-          const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-          const copiedPages = await mergedPdf.copyPages(doc, doc.getPageIndices());
-          copiedPages.forEach((page) => mergedPdf.addPage(page));
+          const buf = Buffer.from(bytes);
+          const ext = getFileExtension(file.name).toLowerCase();
+          const isPdfHeader = buf.subarray(0, 5).toString('ascii') === '%PDF-';
+
+          if (isPdfHeader || ext === 'pdf') {
+            if (!isPdfHeader) {
+              return NextResponse.json(
+                { error: `"${file.name}" is not a valid PDF file (missing %PDF header).` },
+                { status: 400 }
+              );
+            }
+            const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+            const copiedPages = await mergedPdf.copyPages(doc, doc.getPageIndices());
+            copiedPages.forEach((page) => mergedPdf.addPage(page));
+          } else if (imageExts.has(ext) || file.type.startsWith('image/')) {
+            // Seamlessly embed images as PDF pages so merging PDFs + images works cleanly
+            let embeddedImage;
+            if (ext === 'jpg' || ext === 'jpeg') {
+              embeddedImage = await mergedPdf.embedJpg(new Uint8Array(buf));
+            } else if (ext === 'png') {
+              embeddedImage = await mergedPdf.embedPng(new Uint8Array(buf));
+            } else {
+              const pngBuffer = await sharp(buf).png().toBuffer();
+              embeddedImage = await mergedPdf.embedPng(new Uint8Array(pngBuffer));
+            }
+            const { width, height } = embeddedImage;
+            const page = mergedPdf.addPage([width, height]);
+            page.drawImage(embeddedImage, { x: 0, y: 0, width, height });
+          } else {
+            return NextResponse.json(
+              { error: `"${file.name}" is not a supported PDF or image file.` },
+              { status: 400 }
+            );
+          }
         }
 
         const mergedBytes = await mergedPdf.save();

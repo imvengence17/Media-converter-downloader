@@ -97,7 +97,10 @@ export default function OcrPage() {
       });
 
       const ret = await worker.recognize(selectedFile);
-      const recognizedText = ret.data.text || '';
+      const recognizedText = (ret.data.text || '')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
       const conf = Math.round(ret.data.confidence || 0);
       await worker.terminate();
 
@@ -271,7 +274,8 @@ export default function OcrPage() {
                         onChange={(e) => setExtractedText(e.target.value)}
                         placeholder="Extracted text will appear here. You can freely edit or copy it."
                         rows={14}
-                        className="w-full h-96 p-4 rounded-2xl bg-white dark:bg-navy-900/90 font-mono text-xs leading-relaxed text-navy-900 dark:text-gray-100 border border-gray-200 dark:border-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-primary"
+                        style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}
+                        className="w-full h-96 p-4 rounded-2xl bg-white dark:bg-navy-900/90 font-sans text-sm sm:text-base leading-relaxed text-navy-900 dark:text-gray-100 border border-gray-200 dark:border-gray-800 focus:outline-none focus:ring-2 focus:ring-pink-primary"
                       />
                     </div>
                   </div>

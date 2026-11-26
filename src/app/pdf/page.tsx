@@ -287,6 +287,8 @@ export default function PdfToolsPage() {
               accept={
                 activeTool === 'image-to-pdf'
                   ? 'image/*,.jpg,.jpeg,.png,.webp'
+                  : activeTool === 'merge'
+                  ? '.pdf,application/pdf,image/*,.jpg,.jpeg,.png,.webp'
                   : '.pdf,application/pdf'
               }
               multiple={activeTool === 'image-to-pdf' || activeTool === 'merge'}
@@ -295,7 +297,7 @@ export default function PdfToolsPage() {
                 activeTool === 'image-to-pdf'
                   ? 'Upload images to compile into PDF'
                   : activeTool === 'merge'
-                  ? 'Upload multiple PDF files to combine'
+                  ? 'Upload multiple PDFs or images to combine'
                   : 'Select a PDF document'
               }
               description={
@@ -422,8 +424,19 @@ export default function PdfToolsPage() {
                       readOnly
                       value={result.text}
                       rows={8}
-                      className="w-full p-4 rounded-xl bg-white dark:bg-navy-900 font-mono text-xs text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 focus:outline-none"
+                      style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}
+                      className="w-full p-4 rounded-xl bg-white dark:bg-navy-900 font-sans text-sm sm:text-base leading-relaxed text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700 focus:outline-none"
                     />
+                    {result.text.includes('use our OCR tool') && (
+                      <div className="flex justify-end">
+                        <a
+                          href="/ocr"
+                          className="btn-secondary text-xs px-4 py-2 inline-flex items-center gap-1.5"
+                        >
+                          Open OCR Text Extractor →
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
               </motion.div>
