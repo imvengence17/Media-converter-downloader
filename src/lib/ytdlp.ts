@@ -209,28 +209,40 @@ async function downloadYouTubeWithInnertube(options: {
 }): Promise<{ filePath: string; title: string; extractor: string }> {
   const { videoId, outputDir, fileId, audioOnly } = options;
   const { Innertube, ClientType } = await import('youtubei.js');
-  const yt = await Innertube.create({ client_type: ClientType.ANDROID });
-  const info = await yt.getBasicInfo(videoId);
-  const rawTitle = info.basic_info?.title || 'youtube_video';
-  const safeTitle =
-    rawTitle.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 120) || 'youtube_video';
 
-  const stream = await yt.download(videoId, {
-    type: audioOnly ? 'audio' : 'video+audio',
-    quality: 'best',
-    format: 'any',
-  });
+  const clientsToTry = [ClientType.ANDROID, ClientType.IOS, ClientType.TV_EMBEDDED];
+  let lastError: any = null;
 
-  const buffer = Buffer.from(await new Response(stream).arrayBuffer());
-  const ext = audioOnly ? 'm4a' : 'mp4';
-  const outFile = path.join(outputDir, `${fileId}_src.${ext}`);
-  fs.writeFileSync(outFile, buffer);
+  for (const clientType of clientsToTry) {
+    try {
+      const yt = await Innertube.create({ client_type: clientType });
+      const info = await yt.getBasicInfo(videoId);
+      const rawTitle = info.basic_info?.title || 'youtube_video';
+      const safeTitle =
+        rawTitle.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 120) || 'youtube_video';
 
-  return {
-    filePath: outFile,
-    title: safeTitle,
-    extractor: 'Youtube',
-  };
+      const stream = await yt.download(videoId, {
+        type: audioOnly ? 'audio' : 'video+audio',
+        quality: 'best',
+        format: 'any',
+      });
+
+      const buffer = Buffer.from(await new Response(stream).arrayBuffer());
+      const ext = audioOnly ? 'm4a' : 'mp4';
+      const outFile = path.join(outputDir, `${fileId}_src.${ext}`);
+      fs.writeFileSync(outFile, buffer);
+
+      return {
+        filePath: outFile,
+        title: safeTitle,
+        extractor: 'Youtube',
+      };
+    } catch (err: any) {
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Failed to download YouTube video via Innertube');
 }
 
 /**
@@ -383,11 +395,14 @@ export async function downloadVideoWithYtDlp(options: {
 
 export function formatYtDlpError(err: any): string {
   const msg = String(err?.stderr || err?.message || err || '');
+  if (/confirm you.?re not a bot|bot check|LOGIN_REQUIRED/i.test(msg)) {
+    return 'YouTube blocked this cloud server IP with a bot check. Try again in a moment, use a direct .mp4/.mp3 URL, or run the app locally.';
+  }
   if (/drm|widevine|fairplay|encrypted/i.test(msg)) {
     return 'This media is DRM-protected or encrypted and cannot be downloaded without authorization.';
   }
-  if (/private|sign in|login|cookies|authentication|members-only/i.test(msg)) {
-    return 'This media is private or requires login/authorization and cannot be accessed publicly.';
+  if (/private video|this video is private|members-only|account associated with this video/i.test(msg)) {
+    return 'This media is private or members-only and cannot be accessed publicly.';
   }
   return err?.message || 'Failed to download media from the provided URL.';
 }
