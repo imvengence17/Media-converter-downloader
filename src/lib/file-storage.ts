@@ -8,7 +8,7 @@ import { getMimeType } from './utils';
 const TMP_DIR = path.join(os.tmpdir(), 'mediaconvert-tmp');
 const CLEANUP_INTERVAL = 30 * 60 * 1000; // 30 minutes
 const MAX_FILE_AGE = 60 * 60 * 1000; // 1 hour
-const INLINE_DOWNLOAD_MAX_BYTES = 3.5 * 1024 * 1024; // 3.5 MB inline data-URI limit for stateless serverless
+const INLINE_DOWNLOAD_MAX_BYTES = 2.5 * 1024 * 1024; // 2.5 MB raw (~3.3 MB base64, under Vercel 4.5 MB limit)
 
 export function ensureTmpDir(): string {
   if (!fs.existsSync(TMP_DIR)) {

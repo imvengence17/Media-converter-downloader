@@ -7,7 +7,11 @@ const nextConfig = {
       'ffmpeg-static',
       'tesseract.js',
       'pdf-parse',
+      'youtubei.js',
     ],
+    outputFileTracingIncludes: {
+      '/api/convert/**': ['./node_modules/ffmpeg-static/**'],
+    },
     optimizePackageImports: ['@designcodeio/threeui', 'lucide-react'],
   },
   images: {

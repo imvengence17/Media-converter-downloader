@@ -179,9 +179,63 @@ export async function fetchVideoInfo(url: string): Promise<VideoUrlInfo> {
   };
 }
 
+function extractYouTubeVideoId(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    if (host === 'youtu.be') {
+      return parsed.pathname.slice(1).split('/')[0] || null;
+    }
+    if (host.includes('youtube.com')) {
+      if (parsed.searchParams.get('v')) {
+        return parsed.searchParams.get('v');
+      }
+      const parts = parsed.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'shorts' || parts[0] === 'embed' || parts[0] === 'live') {
+        return parts[1] || null;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+async function downloadYouTubeWithInnertube(options: {
+  videoId: string;
+  outputDir: string;
+  fileId: string;
+  audioOnly?: boolean;
+}): Promise<{ filePath: string; title: string; extractor: string }> {
+  const { videoId, outputDir, fileId, audioOnly } = options;
+  const { Innertube, ClientType } = await import('youtubei.js');
+  const yt = await Innertube.create({ client_type: ClientType.ANDROID });
+  const info = await yt.getBasicInfo(videoId);
+  const rawTitle = info.basic_info?.title || 'youtube_video';
+  const safeTitle =
+    rawTitle.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 120) || 'youtube_video';
+
+  const stream = await yt.download(videoId, {
+    type: audioOnly ? 'audio' : 'video+audio',
+    quality: 'best',
+    format: 'any',
+  });
+
+  const buffer = Buffer.from(await new Response(stream).arrayBuffer());
+  const ext = audioOnly ? 'm4a' : 'mp4';
+  const outFile = path.join(outputDir, `${fileId}_src.${ext}`);
+  fs.writeFileSync(outFile, buffer);
+
+  return {
+    filePath: outFile,
+    title: safeTitle,
+    extractor: 'Youtube',
+  };
+}
+
 /**
  * Downloads a video (or audio) from any yt-dlp supported source into a temp directory.
- * Returns the downloaded file path and sanitized title.
+ * Falls back to pure-JS youtubei.js (YouTube) and HTML media extraction on serverless hosts.
  */
 export async function downloadVideoWithYtDlp(options: {
   url: string;
@@ -232,12 +286,30 @@ export async function downloadVideoWithYtDlp(options: {
 
   args.push(url);
 
+  let innertubeResult: { filePath: string; title: string; extractor: string } | null = null;
+
   const { stdout } = await execFileAsync(ytDlp, args, {
     timeout: 5 * 60 * 1000,
     maxBuffer: 10 * 1024 * 1024,
   }).catch(async (err: any) => {
-    // If yt-dlp binary is missing (e.g. Vercel serverless), try extracting og:video / <video> from HTML
-    if (err?.code === 'ENOENT' || String(err?.message || '').includes('ENOENT')) {
+    const errMsg = String(err?.message || '');
+    const isMissingBinary =
+      err?.code === 'ENOENT' || errMsg.includes('ENOENT') || errMsg.includes('not recognized');
+
+    if (isMissingBinary || process.env.VERCEL === '1') {
+      // 1. Pure-JS YouTube download via youtubei.js
+      const ytId = extractYouTubeVideoId(url);
+      if (ytId) {
+        innertubeResult = await downloadYouTubeWithInnertube({
+          videoId: ytId,
+          outputDir,
+          fileId,
+          audioOnly,
+        });
+        return { stdout: '' };
+      }
+
+      // 2. Direct video/audio stream or HTML og:video / <video> extraction
       const headers = {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -269,11 +341,15 @@ export async function downloadVideoWithYtDlp(options: {
         }
       }
       throw new Error(
-        'Platform URL downloading (YouTube, TikTok, Instagram) requires yt-dlp on a local/VPS host. Direct .mp4/.mp3 URLs and HTML embedded videos work on serverless.'
+        'This social platform link requires yt-dlp (available on local/VPS hosting). YouTube links, direct .mp4/.mp3 URLs, and HTML-embedded videos work on Vercel serverless.'
       );
     }
     throw err;
   });
+
+  if (innertubeResult) {
+    return innertubeResult;
+  }
 
   // Output lines from --print: title, extractor_key, after_move:filepath
   const lines = stdout
