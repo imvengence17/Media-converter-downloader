@@ -197,19 +197,22 @@ export default function VideoConverterPage() {
       formData.append('audioBitrate', audioBitrate);
       formData.append('audioFormat', audioFormat.toLowerCase());
 
-      setProgressMessage('Uploading file...');
-      setProgress(10);
+      setProgressMessage(selectedFile ? 'Uploading & processing video...' : 'Downloading & processing video...');
+      setProgress(15);
 
-      // Simulate upload progress for large files
       const uploadTimer = setInterval(() => {
         setProgress(prev => {
-          if (prev >= 40) {
+          if (prev >= 45) {
+            setStatus('processing');
+            setProgressMessage('Transcoding video...');
+          }
+          if (prev >= 90) {
             clearInterval(uploadTimer);
             return prev;
           }
-          return prev + 5;
+          return prev + 4;
         });
-      }, 300);
+      }, 450);
 
       const response = await fetch('/api/convert/video', {
         method: 'POST',
@@ -217,24 +220,7 @@ export default function VideoConverterPage() {
       });
 
       clearInterval(uploadTimer);
-      setStatus('processing');
-      setProgress(50);
-      setProgressMessage('Converting video...');
-
-      // Simulate processing progress
-      const processTimer = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(processTimer);
-            return prev;
-          }
-          return prev + 3;
-        });
-      }, 500);
-
       const data = await response.json();
-
-      clearInterval(processTimer);
 
       if (!response.ok) {
         throw new Error(data.error || 'Conversion failed');

@@ -1200,11 +1200,22 @@ html.bg-only #grain {
   height: 100vh !important;
   pointer-events: none !important;
 }
+html.skip-pre #pre {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
 </style>
 <script>
 if (location.search.indexOf('bg=1') !== -1) {
   document.documentElement.classList.add('bg-only');
 }
+try {
+  if (sessionStorage.getItem('kage_pre_done') === '1') {
+    document.documentElement.classList.add('skip-pre');
+  }
+} catch (e) {}
 </script>
 </head>
 <body data-layout-hero="b" data-layout-story="b" data-layout-gallery="b"
@@ -5105,7 +5116,7 @@ function boot() {
       const p = i / JOBS.length;
       preFill.style.right = ((1 - p) * 100).toFixed(1) + '%';
       prePct.textContent = Math.round(p * 100);
-      if (i < JOBS.length) setTimeout(step, 16); else setTimeout(start, 220);
+      if (i < JOBS.length) setTimeout(step, 16); else setTimeout(start, 40);
     };
     let r;
     try { r = j[1](); }
@@ -5115,7 +5126,14 @@ function boot() {
     }
     (r && r.then) ? r.then(done, done) : done();
   };
-  setTimeout(step, 60);
+  setTimeout(step, 40);
+  setTimeout(() => {
+    try {
+      preEl.classList.add('done');
+      document.body.classList.remove('is-locked');
+      sessionStorage.setItem('kage_pre_done', '1');
+    } catch (e) {}
+  }, 3500);
 }
 
 function fallback(err) {
@@ -5123,11 +5141,13 @@ function fallback(err) {
   document.body.classList.add('no-webgl');
   document.body.classList.remove('is-locked');
   preEl.classList.add('done');
+  try { sessionStorage.setItem('kage_pre_done', '1'); } catch (e) {}
   $$('[data-rv], .mask-line').forEach(e => e.classList.add('rv-in'));
   window.__kage = window.__secret = { fallback: true, error: String(err && err.message || err) };
 }
 
 function start() {
+  try { sessionStorage.setItem('kage_pre_done', '1'); } catch (e) {}
   addEventListener('resize', () => { resize(); }, { passive: true });
   addEventListener('orientationchange', () => setTimeout(resize, 250));
   document.addEventListener('visibilitychange', () => {

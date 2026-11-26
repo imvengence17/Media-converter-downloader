@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
-import path from 'path';
 import { createWorker } from 'tesseract.js';
 import { Document, Packer, Paragraph, TextRun } from 'docx';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { createTempFile, saveTempFile, deleteTempFile } from '@/lib/file-storage';
+import { buildDownloadUrl, createTempFile, saveTempFile, deleteTempFile } from '@/lib/file-storage';
 import { getFileExtension } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
@@ -17,16 +16,16 @@ export async function POST(request: NextRequest) {
     const exportFormat = formData.get('exportFormat') as string | null;
     const customText = formData.get('text') as string | null;
 
-    // Handle export request for previously extracted/edited text
-    if (exportFormat && customText) {
+    if (exportFormat && customText !== null) {
       if (exportFormat === 'txt') {
+        const outBuffer = Buffer.from(customText, 'utf8');
         const { id, path: outPath } = createTempFile('txt');
-        fs.writeFileSync(outPath, customText, 'utf8');
+        fs.writeFileSync(outPath, outBuffer);
         const fileName = 'extracted_text.txt';
         return NextResponse.json({
           id,
           fileName,
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          downloadUrl: buildDownloadUrl(id, fileName, outBuffer, 'txt'),
         });
       } else if (exportFormat === 'docx') {
         const doc = new Document({
@@ -49,7 +48,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           id,
           fileName,
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          downloadUrl: buildDownloadUrl(id, fileName, docxBuffer, 'docx'),
         });
       } else if (exportFormat === 'pdf') {
         const pdfDoc = await PDFDocument.create();
@@ -58,7 +57,7 @@ export async function POST(request: NextRequest) {
         const margin = 50;
         const fontSize = 11;
         const lineHeight = 16;
-        let page = pdfDoc.addPage([595, 842]); // A4
+        let page = pdfDoc.addPage([595, 842]);
         let y = 842 - margin;
 
         for (const line of lines) {
@@ -66,8 +65,8 @@ export async function POST(request: NextRequest) {
             page = pdfDoc.addPage([595, 842]);
             y = 842 - margin;
           }
-          // Wrap or truncate long lines simply
-          const safeText = line.substring(0, 90);
+          // Strip unsupported non-WinAnsi characters so pdf-lib Helvetica doesn't throw
+          const safeText = line.replace(/[^\x20-\x7E\xA0-\xFF]/g, '?').substring(0, 90);
           page.drawText(safeText || ' ', {
             x: margin,
             y,
@@ -79,13 +78,14 @@ export async function POST(request: NextRequest) {
         }
 
         const pdfBytes = await pdfDoc.save();
+        const outBuffer = Buffer.from(pdfBytes);
         const { id, path: outPath } = createTempFile('pdf');
-        fs.writeFileSync(outPath, Buffer.from(pdfBytes));
+        fs.writeFileSync(outPath, outBuffer);
         const fileName = 'extracted_text.pdf';
         return NextResponse.json({
           id,
           fileName,
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          downloadUrl: buildDownloadUrl(id, fileName, outBuffer, 'pdf'),
         });
       }
     }
@@ -100,7 +100,6 @@ export async function POST(request: NextRequest) {
     const saved = saveTempFile(buffer, ext);
     tempImagePath = saved.path;
 
-    // Run Tesseract OCR
     worker = await createWorker(lang);
     const ret = await worker.recognize(tempImagePath);
     const recognizedText = ret.data.text || '';
@@ -109,9 +108,9 @@ export async function POST(request: NextRequest) {
     await worker.terminate();
     worker = null;
 
-    // Save default TXT download
+    const outBuffer = Buffer.from(recognizedText, 'utf8');
     const { id: txtId, path: txtPath } = createTempFile('txt');
-    fs.writeFileSync(txtPath, recognizedText, 'utf8');
+    fs.writeFileSync(txtPath, outBuffer);
 
     const baseName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     const txtFileName = `${baseName}_ocr.txt`;
@@ -120,7 +119,7 @@ export async function POST(request: NextRequest) {
       id: txtId,
       text: recognizedText,
       confidence: Math.round(confidence),
-      downloadUrl: `/api/download/${txtId}?name=${encodeURIComponent(txtFileName)}`,
+      downloadUrl: buildDownloadUrl(txtId, txtFileName, outBuffer, 'txt'),
       fileName: txtFileName,
     });
   } catch (error: any) {
@@ -128,7 +127,7 @@ export async function POST(request: NextRequest) {
     if (worker) {
       try {
         await worker.terminate();
-      } catch (e) {}
+      } catch {}
     }
     return NextResponse.json(
       { error: error.message || 'Failed to extract text from the image' },

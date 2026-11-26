@@ -3,8 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
 import archiver from 'archiver';
-import { saveTempFile, createTempFile, deleteTempFile, getFileFromTmp } from '@/lib/file-storage';
-import { getFileExtension } from '@/lib/utils';
+import { buildDownloadUrl, createTempFile, getFileFromTmp } from '@/lib/file-storage';
 import { fetchImageFromUrl, formatYtDlpError } from '@/lib/ytdlp';
 
 export async function POST(request: NextRequest) {
@@ -18,7 +17,8 @@ export async function POST(request: NextRequest) {
     const widthStr = formData.get('width') as string | null;
     const heightStr = formData.get('height') as string | null;
     const maintainAspectRatio = formData.get('maintainAspectRatio') !== 'false';
-    const enableCompress = formData.get('enableCompress') === 'true';
+    const enableCompress =
+      formData.get('enableCompress') === 'true' || formData.get('compress') === 'true';
 
     const inputItems: Array<{ buffer: Buffer; name: string }> = [];
 
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
         id: outputId,
         fileName: finalFileName,
         fileSize: outputBuffer.length,
-        downloadUrl: `/api/download/${outputId}?name=${encodeURIComponent(finalFileName)}`,
+        downloadUrl: buildDownloadUrl(outputId, finalFileName, outputBuffer, targetExt),
         width: outputMeta.width || metadata.width || 0,
         height: outputMeta.height || metadata.height || 0,
       });

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
-import path from 'path';
 import { PDFDocument, degrees, rgb, StandardFonts } from 'pdf-lib';
 import sharp from 'sharp';
-import { saveTempFile, createTempFile, deleteTempFile } from '@/lib/file-storage';
+import { buildDownloadUrl, createTempFile } from '@/lib/file-storage';
 import { getFileExtension } from '@/lib/utils';
 
 export async function POST(request: NextRequest) {
@@ -22,7 +21,7 @@ export async function POST(request: NextRequest) {
 
         for (const file of files) {
           const bytes = await file.arrayBuffer();
-          let imgBuffer = Buffer.from(bytes);
+          const imgBuffer = Buffer.from(bytes);
           const ext = getFileExtension(file.name).toLowerCase();
 
           let embeddedImage;
@@ -31,7 +30,6 @@ export async function POST(request: NextRequest) {
           } else if (ext === 'png') {
             embeddedImage = await pdfDoc.embedPng(new Uint8Array(imgBuffer));
           } else {
-            // Convert WebP, GIF, TIFF, BMP to PNG via sharp
             const pngBuffer = await sharp(imgBuffer).png().toBuffer();
             embeddedImage = await pdfDoc.embedPng(new Uint8Array(pngBuffer));
           }
@@ -47,15 +45,16 @@ export async function POST(request: NextRequest) {
         }
 
         const pdfBytes = await pdfDoc.save();
+        const outBuffer = Buffer.from(pdfBytes);
         const { id, path: outputPath } = createTempFile('pdf');
-        fs.writeFileSync(outputPath, Buffer.from(pdfBytes));
+        fs.writeFileSync(outputPath, outBuffer);
 
         const fileName = 'images_converted.pdf';
         return NextResponse.json({
           id,
           fileName,
           fileSize: pdfBytes.length,
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          downloadUrl: buildDownloadUrl(id, fileName, outBuffer, 'pdf'),
           pageCount: pdfDoc.getPageCount(),
         });
       }
@@ -69,21 +68,22 @@ export async function POST(request: NextRequest) {
 
         for (const file of files) {
           const bytes = await file.arrayBuffer();
-          const doc = await PDFDocument.load(bytes);
+          const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
           const copiedPages = await mergedPdf.copyPages(doc, doc.getPageIndices());
           copiedPages.forEach((page) => mergedPdf.addPage(page));
         }
 
         const mergedBytes = await mergedPdf.save();
+        const outBuffer = Buffer.from(mergedBytes);
         const { id, path: outputPath } = createTempFile('pdf');
-        fs.writeFileSync(outputPath, Buffer.from(mergedBytes));
+        fs.writeFileSync(outputPath, outBuffer);
 
         const fileName = 'merged_document.pdf';
         return NextResponse.json({
           id,
           fileName,
           fileSize: mergedBytes.length,
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          downloadUrl: buildDownloadUrl(id, fileName, outBuffer, 'pdf'),
           pageCount: mergedPdf.getPageCount(),
         });
       }
@@ -92,10 +92,9 @@ export async function POST(request: NextRequest) {
         const file = files[0];
         const pageRangeStr = (formData.get('pageRange') as string) || '1';
         const bytes = await file.arrayBuffer();
-        const srcDoc = await PDFDocument.load(bytes);
+        const srcDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
         const totalPages = srcDoc.getPageCount();
 
-        // Parse ranges like "1-3, 5" into 0-based page indices
         const indicesToKeep = new Set<number>();
         const parts = pageRangeStr.split(',').map((p) => p.trim());
 
@@ -125,15 +124,16 @@ export async function POST(request: NextRequest) {
         copiedPages.forEach((page) => newDoc.addPage(page));
 
         const splitBytes = await newDoc.save();
+        const outBuffer = Buffer.from(splitBytes);
         const { id, path: outputPath } = createTempFile('pdf');
-        fs.writeFileSync(outputPath, Buffer.from(splitBytes));
+        fs.writeFileSync(outputPath, outBuffer);
 
         const fileName = `split_${file.name}`;
         return NextResponse.json({
           id,
           fileName,
           fileSize: splitBytes.length,
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          downloadUrl: buildDownloadUrl(id, fileName, outBuffer, 'pdf'),
           pageCount: newDoc.getPageCount(),
         });
       }
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
         const file = files[0];
         const angleDeg = parseInt((formData.get('angle') as string) || '90', 10);
         const bytes = await file.arrayBuffer();
-        const doc = await PDFDocument.load(bytes);
+        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
 
         const pages = doc.getPages();
         pages.forEach((page) => {
@@ -151,15 +151,16 @@ export async function POST(request: NextRequest) {
         });
 
         const rotatedBytes = await doc.save();
+        const outBuffer = Buffer.from(rotatedBytes);
         const { id, path: outputPath } = createTempFile('pdf');
-        fs.writeFileSync(outputPath, Buffer.from(rotatedBytes));
+        fs.writeFileSync(outputPath, outBuffer);
 
         const fileName = `rotated_${file.name}`;
         return NextResponse.json({
           id,
           fileName,
           fileSize: rotatedBytes.length,
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          downloadUrl: buildDownloadUrl(id, fileName, outBuffer, 'pdf'),
           pageCount: pages.length,
         });
       }
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
       case 'add-numbers': {
         const file = files[0];
         const bytes = await file.arrayBuffer();
-        const doc = await PDFDocument.load(bytes);
+        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
         const font = await doc.embedFont(StandardFonts.Helvetica);
         const pages = doc.getPages();
         const total = pages.length;
@@ -186,15 +187,16 @@ export async function POST(request: NextRequest) {
         });
 
         const numberedBytes = await doc.save();
+        const outBuffer = Buffer.from(numberedBytes);
         const { id, path: outputPath } = createTempFile('pdf');
-        fs.writeFileSync(outputPath, Buffer.from(numberedBytes));
+        fs.writeFileSync(outputPath, outBuffer);
 
         const fileName = `numbered_${file.name}`;
         return NextResponse.json({
           id,
           fileName,
           fileSize: numberedBytes.length,
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          downloadUrl: buildDownloadUrl(id, fileName, outBuffer, 'pdf'),
           pageCount: total,
         });
       }
@@ -204,21 +206,26 @@ export async function POST(request: NextRequest) {
         const bytes = await file.arrayBuffer();
         const buffer = Buffer.from(bytes);
 
-        // Dynamically load pdf-parse
         let extractedText = '';
         let totalPages = 1;
         try {
-          const pdfParse = (await import('pdf-parse')).default;
+          // Import lib directly to avoid pdf-parse's index.js test-file ENOENT bug in serverless bundles
+          const pdfParseModule: any = await import('pdf-parse/lib/pdf-parse.js');
+          const pdfParse = pdfParseModule.default || pdfParseModule;
           const parsed = await pdfParse(buffer);
-          extractedText = parsed.text || '';
+          extractedText = (parsed.text || '').trim();
           totalPages = parsed.numpages || 1;
+          if (!extractedText) {
+            extractedText = 'No selectable text found. The PDF may contain scanned images only (use our OCR tool instead).';
+          }
         } catch (e: any) {
+          console.error('pdf-parse error:', e);
           extractedText = 'Unable to extract textual layer. The PDF might contain scanned images only (use our OCR tool instead).';
         }
 
-        // Save as downloadable TXT
+        const outBuffer = Buffer.from(extractedText, 'utf8');
         const { id, path: outputPath } = createTempFile('txt');
-        fs.writeFileSync(outputPath, extractedText, 'utf8');
+        fs.writeFileSync(outputPath, outBuffer);
 
         const baseName = file.name.replace(/\.[^/.]+$/, '');
         const fileName = `${baseName}_extracted.txt`;
@@ -226,8 +233,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           id,
           fileName,
-          fileSize: Buffer.byteLength(extractedText),
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          fileSize: outBuffer.length,
+          downloadUrl: buildDownloadUrl(id, fileName, outBuffer, 'txt'),
           text: extractedText,
           pageCount: totalPages,
         });
@@ -236,19 +243,19 @@ export async function POST(request: NextRequest) {
       case 'compress': {
         const file = files[0];
         const bytes = await file.arrayBuffer();
-        const doc = await PDFDocument.load(bytes);
+        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
 
-        // PDF-lib optimizes structure upon re-saving
         const compressedBytes = await doc.save({ useObjectStreams: true });
+        const outBuffer = Buffer.from(compressedBytes);
         const { id, path: outputPath } = createTempFile('pdf');
-        fs.writeFileSync(outputPath, Buffer.from(compressedBytes));
+        fs.writeFileSync(outputPath, outBuffer);
 
         const fileName = `compressed_${file.name}`;
         return NextResponse.json({
           id,
           fileName,
           fileSize: compressedBytes.length,
-          downloadUrl: `/api/download/${id}?name=${encodeURIComponent(fileName)}`,
+          downloadUrl: buildDownloadUrl(id, fileName, outBuffer, 'pdf'),
           pageCount: doc.getPageCount(),
         });
       }

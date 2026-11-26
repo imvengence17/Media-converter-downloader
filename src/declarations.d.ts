@@ -11,3 +11,5 @@ declare module '../nocturne-hero/NocturneScene';
 declare module './sandboxedPageDocument';
 declare module '../sylva-living-world/SylvaLivingWorldScene';
 declare module 'pdf-parse';
+
+declare module 'pdf-parse/lib/pdf-parse.js';

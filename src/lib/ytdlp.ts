@@ -235,6 +235,44 @@ export async function downloadVideoWithYtDlp(options: {
   const { stdout } = await execFileAsync(ytDlp, args, {
     timeout: 5 * 60 * 1000,
     maxBuffer: 10 * 1024 * 1024,
+  }).catch(async (err: any) => {
+    // If yt-dlp binary is missing (e.g. Vercel serverless), try extracting og:video / <video> from HTML
+    if (err?.code === 'ENOENT' || String(err?.message || '').includes('ENOENT')) {
+      const headers = {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      };
+      const pageRes = await fetch(url, { headers, redirect: 'follow' });
+      const ct = (pageRes.headers.get('content-type') || '').toLowerCase();
+      if (pageRes.ok && (ct.startsWith('video/') || ct.startsWith('audio/'))) {
+        const buf = Buffer.from(await pageRes.arrayBuffer());
+        const ext = ct.split('/')[1]?.split(';')[0] || (audioOnly ? 'mp3' : 'mp4');
+        const outFile = path.join(outputDir, `${fileId}_src.${ext}`);
+        fs.writeFileSync(outFile, buf);
+        return { stdout: `downloaded-media\nDirect\n${outFile}` };
+      }
+      if (pageRes.ok && ct.includes('text/html')) {
+        const html = await pageRes.text();
+        const videoMatch =
+          html.match(/<meta[^>]+property=["']og:video(?::secure_url|:url)?["'][^>]+content=["']([^"']+)["']/i) ||
+          html.match(/<(?:video|source)[^>]+src=["']([^"']+)["']/i);
+        if (videoMatch?.[1]) {
+          const mediaUrl = new URL(videoMatch[1], url).href;
+          validatePublicVideoUrl(mediaUrl);
+          const mediaRes = await fetch(mediaUrl, { headers, redirect: 'follow' });
+          if (mediaRes.ok) {
+            const buf = Buffer.from(await mediaRes.arrayBuffer());
+            const outFile = path.join(outputDir, `${fileId}_src.mp4`);
+            fs.writeFileSync(outFile, buf);
+            return { stdout: `downloaded-media\nWeb\n${outFile}` };
+          }
+        }
+      }
+      throw new Error(
+        'Platform URL downloading (YouTube, TikTok, Instagram) requires yt-dlp on a local/VPS host. Direct .mp4/.mp3 URLs and HTML embedded videos work on serverless.'
+      );
+    }
+    throw err;
   });
 
   // Output lines from --print: title, extractor_key, after_move:filepath
@@ -287,7 +325,31 @@ export async function fetchImageFromUrl(url: string): Promise<{
   fileName: string;
   sourceType: string;
 }> {
-  const parsed = validatePublicVideoUrl(url);
+  // Support data:image/... base64 URLs directly
+  if (url.startsWith('data:image/')) {
+    const match = url.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
+    if (match) {
+      const ext = match[1].replace('jpeg', 'jpg').replace('svg+xml', 'svg');
+      return {
+        buffer: Buffer.from(match[2], 'base64'),
+        fileName: `pasted_image.${ext}`,
+        sourceType: 'Data URI',
+      };
+    }
+  }
+
+  let parsed = validatePublicVideoUrl(url);
+
+  // Unwrap Google Images / Bing redirect URLs (e.g. ?imgurl=https://...)
+  const nestedImgUrl =
+    parsed.searchParams.get('imgurl') ||
+    parsed.searchParams.get('mediaurl') ||
+    parsed.searchParams.get('url');
+  if (nestedImgUrl && /^https?:\/\//i.test(nestedImgUrl)) {
+    url = nestedImgUrl;
+    parsed = validatePublicVideoUrl(url);
+  }
+
   const headers = {
     'User-Agent':
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -319,22 +381,21 @@ export async function fetchImageFromUrl(url: string): Promise<{
       /<meta[^>]+(?:property|name)=["'](?:og:image|og:image:secure_url|twitter:image|twitter:image:src)["'][^>]+content=["']([^"']+)["']/gi,
       /<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["'](?:og:image|og:image:secure_url|twitter:image|twitter:image:src)["']/gi,
       /<link[^>]+rel=["']image_src["'][^>]+href=["']([^"']+)["']/gi,
+      /"image"\s*:\s*"(https?:[^"]+)"/gi,
     ];
 
     for (const regex of metaPatterns) {
       let match: RegExpExecArray | null;
       while ((match = regex.exec(html)) !== null) {
-        if (match[1]) candidates.push(match[1]);
+        if (match[1]) candidates.push(match[1].replace(/\\\//g, '/'));
       }
     }
 
-    if (candidates.length === 0) {
-      const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi;
-      let match: RegExpExecArray | null;
-      while ((match = imgRegex.exec(html)) !== null) {
-        if (match[1] && !match[1].startsWith('data:')) {
-          candidates.push(match[1]);
-        }
+    const imgAttrRegex = /<img[^>]+(?:src|data-src|data-lazy-src)=["']([^"']+)["']/gi;
+    let imgMatch: RegExpExecArray | null;
+    while ((imgMatch = imgAttrRegex.exec(html)) !== null) {
+      if (imgMatch[1] && !imgMatch[1].startsWith('data:')) {
+        candidates.push(imgMatch[1]);
       }
     }
 
@@ -358,9 +419,27 @@ export async function fetchImageFromUrl(url: string): Promise<{
         // Try next candidate
       }
     }
+  } else {
+    // Try treating non-HTML binary response (e.g. application/octet-stream) as an image
+    try {
+      const buf = Buffer.from(await res.arrayBuffer());
+      const sharp = (await import('sharp')).default;
+      const meta = await sharp(buf).metadata();
+      if (meta.format) {
+        const ext = meta.format === 'jpeg' ? 'jpg' : meta.format;
+        const rawName = path.basename(parsed.pathname) || `image.${ext}`;
+        return {
+          buffer: buf,
+          fileName: rawName.includes('.') ? rawName : `${rawName}.${ext}`,
+          sourceType: 'Direct Image',
+        };
+      }
+    } catch {
+      // Not an image buffer
+    }
   }
 
-  // Fallback: try yt-dlp thumbnail for video/media pages
+  // Fallback: try yt-dlp / oEmbed thumbnail for video/media pages
   try {
     const info = await fetchVideoInfo(url);
     if (info.thumbnail) {

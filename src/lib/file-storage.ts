@@ -1,10 +1,14 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { getMimeType } from './utils';
 
-const TMP_DIR = path.join(process.cwd(), 'tmp');
+// Use OS temp directory so writes succeed on read-only serverless filesystems (e.g. Vercel /tmp)
+const TMP_DIR = path.join(os.tmpdir(), 'mediaconvert-tmp');
 const CLEANUP_INTERVAL = 30 * 60 * 1000; // 30 minutes
 const MAX_FILE_AGE = 60 * 60 * 1000; // 1 hour
+const INLINE_DOWNLOAD_MAX_BYTES = 3.5 * 1024 * 1024; // 3.5 MB inline data-URI limit for stateless serverless
 
 export function ensureTmpDir(): string {
   if (!fs.existsSync(TMP_DIR)) {
@@ -21,11 +25,11 @@ export function createTempFile(ext: string): { id: string; path: string } {
 }
 
 export function getTempFilePath(id: string, ext?: string): string {
+  ensureTmpDir();
   if (ext) {
     return path.join(TMP_DIR, `${id}.${ext}`);
   }
-  // Find file with any extension
-  const files = fs.readdirSync(TMP_DIR).filter(f => f.startsWith(id));
+  const files = fs.readdirSync(TMP_DIR).filter((f) => f.startsWith(id));
   if (files.length > 0) {
     return path.join(TMP_DIR, files[0]);
   }
@@ -48,6 +52,29 @@ export function deleteTempFile(filePath: string): void {
   }
 }
 
+/**
+ * Returns an inline data URL for files <= 3.5 MB (works across stateless Vercel containers),
+ * or falls back to /api/download/[id] for larger files.
+ */
+export function buildDownloadUrl(
+  id: string,
+  fileName: string,
+  bufferOrPath: Buffer | string,
+  ext?: string
+): string {
+  try {
+    const buffer = typeof bufferOrPath === 'string' ? fs.readFileSync(bufferOrPath) : bufferOrPath;
+    if (buffer.length <= INLINE_DOWNLOAD_MAX_BYTES) {
+      const resolvedExt = ext || path.extname(fileName).replace('.', '') || 'bin';
+      const mime = getMimeType(resolvedExt);
+      return `data:${mime};base64,${buffer.toString('base64')}`;
+    }
+  } catch (err) {
+    console.warn('Inline data URL fallback to /api/download:', err);
+  }
+  return `/api/download/${id}?name=${encodeURIComponent(fileName)}`;
+}
+
 export function cleanupOldFiles(): void {
   try {
     ensureTmpDir();
@@ -66,14 +93,13 @@ export function cleanupOldFiles(): void {
   }
 }
 
-// Start cleanup interval
 if (typeof setInterval !== 'undefined') {
   setInterval(cleanupOldFiles, CLEANUP_INTERVAL);
 }
 
 export function getFileFromTmp(id: string): { path: string; exists: boolean } {
   ensureTmpDir();
-  const files = fs.readdirSync(TMP_DIR).filter(f => f.startsWith(id));
+  const files = fs.readdirSync(TMP_DIR).filter((f) => f.startsWith(id));
   if (files.length > 0) {
     const filePath = path.join(TMP_DIR, files[0]);
     return { path: filePath, exists: true };

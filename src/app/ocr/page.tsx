@@ -79,45 +79,48 @@ export default function OcrPage() {
     }
 
     setStatus('uploading');
-    setProgress(20);
-    setProgressMessage('Analyzing image structure...');
+    setProgress(10);
+    setProgressMessage('Initializing Tesseract OCR engine...');
 
     try {
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('language', language);
-
-      setProgress(40);
       setStatus('processing');
-      setProgressMessage('Running Tesseract neural optical recognition...');
-
-      const response = await fetch('/api/ocr', {
-        method: 'POST',
-        body: formData,
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker(language, 1, {
+        logger: (m: { status?: string; progress?: number }) => {
+          if (typeof m.progress === 'number') {
+            setProgress(Math.max(15, Math.min(95, Math.round(m.progress * 100))));
+          }
+          if (m.status) {
+            setProgressMessage(m.status.charAt(0).toUpperCase() + m.status.slice(1) + '...');
+          }
+        },
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'OCR processing failed');
-      }
+      const ret = await worker.recognize(selectedFile);
+      const recognizedText = ret.data.text || '';
+      const conf = Math.round(ret.data.confidence || 0);
+      await worker.terminate();
 
-      const data = await response.json();
+      const baseName = selectedFile.name.substring(0, selectedFile.name.lastIndexOf('.')) || selectedFile.name;
+      const txtFileName = `${baseName}_ocr.txt`;
+      const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(recognizedText)}`;
+
       setProgress(100);
       setStatus('completed');
-      setExtractedText(data.text);
-      setConfidence(data.confidence);
+      setExtractedText(recognizedText);
+      setConfidence(conf);
       setProgressMessage('Text recognized successfully!');
       toast.success('Text extracted successfully!');
 
       addItem({
-        id: data.id,
+        id: `${Date.now()}`,
         type: 'ocr',
         inputFileName: selectedFile.name,
-        outputFileName: data.fileName,
+        outputFileName: txtFileName,
         outputFormat: 'txt',
-        fileSize: data.text.length,
+        fileSize: recognizedText.length,
         convertedAt: new Date().toISOString(),
-        downloadUrl: data.downloadUrl,
+        downloadUrl: dataUrl,
       });
     } catch (err: any) {
       setStatus('error');

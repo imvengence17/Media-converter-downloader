@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { saveTempFile, createTempFile, deleteTempFile, ensureTmpDir } from '@/lib/file-storage';
+import { buildDownloadUrl, saveTempFile, createTempFile, deleteTempFile, ensureTmpDir } from '@/lib/file-storage';
 import { getFileExtension } from '@/lib/utils';
 import {
   downloadVideoWithYtDlp,
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
       id: outputId,
       fileName: finalFileName,
       fileSize: outputStats.size,
-      downloadUrl: `/api/download/${outputId}?name=${encodeURIComponent(finalFileName)}`,
+      downloadUrl: buildDownloadUrl(outputId, finalFileName, outputPath, targetExt),
     });
   } catch (error: any) {
     console.error('Audio conversion error:', error);

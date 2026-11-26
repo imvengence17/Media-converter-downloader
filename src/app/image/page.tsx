@@ -267,7 +267,7 @@ export default function ImageConverterPage() {
       }
 
       if (enableCompress) {
-        formData.append('compress', 'true');
+        formData.append('enableCompress', 'true');
       }
 
       setStatus('processing');

@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { saveTempFile, createTempFile, deleteTempFile, ensureTmpDir } from '@/lib/file-storage';
+import { buildDownloadUrl, saveTempFile, createTempFile, deleteTempFile, ensureTmpDir } from '@/lib/file-storage';
 import { getFileExtension } from '@/lib/utils';
 import {
   downloadVideoWithYtDlp,
+  formatYtDlpError,
   getFfmpegPath,
   isDirectMediaUrl,
   validatePublicVideoUrl,
@@ -80,7 +81,7 @@ export async function POST(request: NextRequest) {
           downloadedFromPlatform = true;
         } catch (err: any) {
           return NextResponse.json(
-            { error: `Failed to download video from source: ${err.message}` },
+            { error: formatYtDlpError(err) },
             { status: 400 }
           );
         }
@@ -164,7 +165,7 @@ export async function POST(request: NextRequest) {
       id: outputId,
       fileName: finalDownloadName,
       fileSize: outputStats.size,
-      downloadUrl: `/api/download/${outputId}?name=${encodeURIComponent(finalDownloadName)}`,
+      downloadUrl: buildDownloadUrl(outputId, finalDownloadName, outputPath, targetExt),
     });
   } catch (error: any) {
     console.error('Video conversion error:', error);
