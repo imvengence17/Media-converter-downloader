@@ -100,7 +100,11 @@ export async function POST(request: NextRequest) {
 
     // Fast path: if yt-dlp already downloaded an MP4 at the target resolution and user wants MP4 at standard/high quality
     if (downloadedFromPlatform && !extractAudio && inExt === 'mp4' && targetExt === 'mp4' && quality >= 75) {
-      fs.copyFileSync(inputPath, outputPath);
+      try {
+        fs.renameSync(inputPath, outputPath);
+      } catch {
+        fs.copyFileSync(inputPath, outputPath);
+      }
     } else {
       // Run conversion with fluent-ffmpeg if available
       let ffmpeg: any;

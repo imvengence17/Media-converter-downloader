@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
 import path from 'path';
+import { Readable } from 'stream';
 import { getFileFromTmp } from '@/lib/file-storage';
 import { getMimeType, getFileExtension } from '@/lib/utils';
 
@@ -26,7 +27,6 @@ export async function GET(
     const fileName = path.basename(filePath);
     const ext = getFileExtension(fileName);
     const mimeType = getMimeType(ext);
-    const fileBuffer = fs.readFileSync(filePath);
     const stat = fs.statSync(filePath);
 
     // Optional custom filename from query string
@@ -35,7 +35,9 @@ export async function GET(
     const asciiFallback = downloadName.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
     const utf8Encoded = encodeURIComponent(downloadName);
 
-    return new NextResponse(fileBuffer, {
+    const fileStream = Readable.toWeb(fs.createReadStream(filePath)) as ReadableStream<Uint8Array>;
+
+    return new NextResponse(fileStream, {
       status: 200,
       headers: {
         'Content-Type': mimeType,

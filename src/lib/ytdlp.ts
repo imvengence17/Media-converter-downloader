@@ -76,6 +76,14 @@ export function getYtDlpPath(): string {
   if (process.env.YTDLP_PATH && fs.existsSync(process.env.YTDLP_PATH)) {
     return process.env.YTDLP_PATH;
   }
+  const localBin = path.join(
+    process.cwd(),
+    'bin',
+    process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
+  );
+  if (fs.existsSync(localBin)) {
+    return localBin;
+  }
   if (process.platform === 'win32') {
     const localAppData = process.env.LOCALAPPDATA || '';
     const candidates = [

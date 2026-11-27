@@ -63,8 +63,10 @@ export function buildDownloadUrl(
   ext?: string
 ): string {
   try {
-    const buffer = typeof bufferOrPath === 'string' ? fs.readFileSync(bufferOrPath) : bufferOrPath;
-    if (buffer.length <= INLINE_DOWNLOAD_MAX_BYTES) {
+    const size =
+      typeof bufferOrPath === 'string' ? fs.statSync(bufferOrPath).size : bufferOrPath.length;
+    if (size <= INLINE_DOWNLOAD_MAX_BYTES) {
+      const buffer = typeof bufferOrPath === 'string' ? fs.readFileSync(bufferOrPath) : bufferOrPath;
       const resolvedExt = ext || path.extname(fileName).replace('.', '') || 'bin';
       const mime = getMimeType(resolvedExt);
       return `data:${mime};base64,${buffer.toString('base64')}`;
